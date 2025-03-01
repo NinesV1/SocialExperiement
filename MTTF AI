@@ -1,0 +1,47 @@
+import requests
+import pandas as pd
+import re
+import numpy as np
+import seaborn as sb
+import matplotlib.pyplot as plt
+
+Bosch_Data = pd.read_csv('../Bosch Dataset.csv')
+
+HUGGING_FACE_API_KEY = "KEY"
+MODEL = "gpt2"  # Changed model to gpt2
+
+def get_mttf_huggingface(description):
+    """Use Hugging Face API to get MTTF value."""
+    prompt = (
+    f"Provide only the numerical value for the mean time to failure (MTTF) of {description}. "
+    f"Output only the number followed by a unit such as hours, years, or cycles."
+    )
+
+    headers = {"Authorization": f"Bearer {HUGGING_FACE_API_KEY}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {"max_new_tokens": 50},
+        "options": {"wait_for_model": True}
+    }
+
+    response = requests.post(f"https://api-inference.huggingface.co/models/{MODEL}", headers=headers, json=payload)
+
+    if response.status_code == 200:
+        result = response.json()
+        print(f"Response for '{description}': {result}")
+        text = result[0]["generated_text"] if isinstance(result, list) else str(result)
+
+        print(f"Generated text: {text}")
+
+        match = re.search(r'(\d{1,6}(?:\.\d+)?)\s*(hours|years|cycles|days|minutes|seconds)?', text, re.IGNORECASE)
+        return match.group(1) if match else "Unknown"
+    else:
+        print(f"API Failure: {response.status_code}, Message: {response.text}")
+        return "Unknown"
+
+item_data = pd.DataFrame(Bosch_Data[["Description", 'Brand (Make)', 'Range']]).dropna()
+item_data["MTTF"] = item_data["Description"].apply(get_mttf_huggingface)
+
+print(item_data.head())  # Adjust this to see more rows if needed
+item_data.head(75)
+sb.catplot(y = "MTTF", data = item_data, kind = "count")
