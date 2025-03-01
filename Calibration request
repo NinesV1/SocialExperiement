@@ -1,0 +1,233 @@
+
+
+import pandas as pd
+
+
+Bosch_Data = pd.read_csv('Bosch Dataset.csv')
+Bosch_Data.head()
+
+import pandas as pd
+Bosch_Data = pd.read_csv("Bosch Dataset.csv")
+item_data = pd.DataFrame(Bosch_Data[["Description", "Brand (Make)", "Range"]]).dropna()
+item_data.head()
+
+
+from transformers import pipeline
+generator = pipeline('text-generation', model='gpt2')
+# Generate text
+output = generator("Hello, how are you?", max_length=50)
+print(output)
+
+from huggingface_hub import login
+
+# Authenticate using your Hugging Face token
+login(token='API_key')
+
+
+
+import requests
+import re
+from transformers import pipeline
+
+# Load Bosch data and clean it
+item_data = pd.DataFrame(Bosch_Data[["Description", 'Brand (Make)', 'Range']]).dropna()
+
+# Load summarization model
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+
+# Function to extract only numbers from text
+def extract_number(text):
+    numbers = re.findall(r'\d+', text)  # Extract all numbers
+    return numbers[0] if numbers else None  # Return first number found or None
+
+# Function to get MTTF estimate
+def search_mttf(item_description):
+    try:
+        word_count = len(item_description.split())
+        max_len = max(2, min(10, word_count - 1))
+
+        summary = summarizer(item_description, max_length=max_len, min_length=2, do_sample=False)[0]['summary_text']
+
+        query = f"{summary} mean time to failure MTTF"
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(search_url, headers=headers)
+
+        if response.status_code == 200:
+            extracted_number = extract_number(response.text)
+
+            if extracted_number:
+                print(f"Success: {item_description} → MTTF Found: {extracted_number}")
+                return extracted_number  # Return the number if found
+            else:
+                print(f"No MTTF found for: {item_description}")
+                return None  # No number found
+        else:
+            print(f"Search failed for {item_description} (HTTP {response.status_code})")
+            return None
+
+    except Exception as e:
+        print(f"Error processing {item_description}: {e}")
+        return None
+
+
+# Apply function to each item in 'Description'
+item_data["MTTF"] = item_data["Description"].apply(search_mttf)
+
+# Remove rows where MTTF is None
+item_data = item_data.dropna(subset=["MTTF"])
+
+# Save results
+item_data.to_csv("bosch_mttf_numbers.csv", index=False)
+
+# Display results
+print(item_data.head())
+
+
+import os
+print("File saved at:", os.getcwd())
+
+
+
+df_relevant = pd.DataFrame(Bosch_Data[['Description', 'Brand (Make)', 'Range', 'Remaining mths before Calibration due date ', 'Mean Time to Failure']]).dropna()
+
+df_relevant.head()
+
+
+print(item_data.columns)
+
+df_relevant = pd.DataFrame(Bosch_Data[['Description', 'Brand (Make)', 'Range', 'Remaining mths before Calibration due date ']]).dropna()
+
+df_relevant.head()
+
+
+from datetime import datetime
+df = Bosch_Data[['Description', 'Brand (Make)', 'Range', 'Remaining mths before Calibration due date ']].copy()  # Create df
+df['Remaining mths before Calibration due date '] = pd.to_numeric(df['Remaining mths before Calibration due date '], errors='coerce')
+
+# Function to flag priority based on remaining months
+def priority_flag(row):
+    if row[ 'Remaining mths before Calibration due date '] < 0:
+        return "Expired", "This item needs to be replaced now!"
+    elif row[ 'Remaining mths before Calibration due date '] < 1:
+        return "Highest Priority (1 Month)", "This item needs to be replaced in less than a month!"
+    elif row[ 'Remaining mths before Calibration due date '] < 2:
+        return "High Priority (2 Months)", "This item needs to be replaced soon!"
+    elif row[ 'Remaining mths before Calibration due date '] < 3:
+        return "Medium Priority (3 Months)", "This item needs to be replaced soon."
+    else:
+        return "Low Priority (More Than 3 Months)", "This item does not need to be replacement."
+
+# Apply the function to the DataFrame and create the 'Priority' and 'Notification' columns
+Bosch_Data[['Priority', 'Notification']] = Bosch_Data.apply(priority_flag, axis=1, result_type="expand")
+
+# Sort by Remaining Months Before Calibration Due Date (highest priority on top)
+df_sorted = Bosch_Data.sort_values(by= 'Remaining mths before Calibration due date ', ascending=True)
+
+display(df_sorted[['Description', 'Brand (Make)', 'Range', 'Remaining mths before Calibration due date ', 'Priority', 'Notification']])
+
+
+
+import pandas as pd
+from datetime import datetime
+
+# Assuming you already have your dataset 'Bosch_Data' loaded and cleaned
+Bosch_Data['Remaining mths before Calibration due date '] = pd.to_numeric(Bosch_Data['Remaining mths before Calibration due date '], errors='coerce')
+
+# Function to flag priority based on remaining months
+def priority_flag(row):
+    if row['Remaining mths before Calibration due date '] < 0:
+        return "Expired", "This item needs to be replaced NOWWW!"
+    elif row['Remaining mths before Calibration due date '] < 1:
+        return "Highest Priority (1 Month)", "This item needs to be replaced in the near future!"
+    elif row['Remaining mths before Calibration due date '] < 2:
+        return "High Priority (2 Months)", "This item needs to be replaced soon!"
+    elif row['Remaining mths before Calibration due date '] < 3:
+        return "Medium Priority (3 Months)", "This item needs to be replaced in the coming months."
+    else:
+        return "Low Priority (More Than 3 Months)", "This item does not need to be replaced."
+
+# Apply the function to the DataFrame and create the 'Priority' and 'Notification' columns
+Bosch_Data[['Priority', 'Notification']] = Bosch_Data.apply(priority_flag, axis=1, result_type="expand")
+
+# Sort by Remaining Months Before Calibration Due Date (highest priority on top)
+df_sorted = Bosch_Data.sort_values(by='Remaining mths before Calibration due date ', ascending=True)
+
+# Function to query the tool information based on user input
+def get_tool_info():
+    while True:
+        # Ask the user if they want to search for a tool
+        tool_name = input("Enter the tool name to check its details (or 'exit' to quit): ")
+
+        # If the user wants to exit the loop
+        if tool_name.lower() == 'exit':
+            print("Thanks for checking!")
+            break
+
+        # Filter the DataFrame for the tool that matches the name
+        tool_data = df_sorted[df_sorted['Description'].str.contains(tool_name, case=False, na=False)]
+
+        # If the tool is found, display the information
+        if not tool_data.empty:
+            print(f"Details for '{tool_name}':")
+            print(tool_data[['Description', 'Brand (Make)', 'Remaining mths before Calibration due date ', 'Priority', 'Notification']])
+        else:
+            print("Tool not found! Please check the tool name and try again.")
+
+        # Ask if the user wants to check another tool
+        user_choice = input("Do you want to check another item? (yes/no): ").strip().lower()
+
+        if user_choice == 'no':
+            print("Thanks for checking!")
+            break
+        elif user_choice != 'yes':
+            print("Invalid input. Please enter 'yes' or 'no'.")
+
+# Call the function to start the interactive session
+get_tool_info()
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Function to flag priority based on remaining months
+def priority_flag(row):
+    if row['Remaining mths before Calibration due date '] < 0:
+        return "Expired"
+    elif row['Remaining mths before Calibration due date '] < 1:
+        return "Highest Priority (1 Month)"
+    elif row['Remaining mths before Calibration due date '] < 2:
+        return "High Priority (2 Months)"
+    elif row['Remaining mths before Calibration due date '] < 3:
+        return "Medium Priority (3 Months)"
+    else:
+        return "Low Priority (More Than 3 Months)"
+
+# Apply the function to the DataFrame and create the 'Priority' column
+df['Priority'] = df.apply(priority_flag, axis=1)
+
+# Filter out the tools that do not need replacement (Low Priority > 3 months)
+df_priority = df[df['Priority'].isin(['Expired', 'Highest Priority (1 Month)', 'High Priority (2 Months)', 'Medium Priority (3 Months)'])]
+
+# Count the number of tools in each priority category
+priority_counts = df_priority['Priority'].value_counts()
+
+# Define the exact order of priority categories
+priority_order = ['Expired', 'Highest Priority (1 Month)', 'High Priority (2 Months)', 'Medium Priority (3 Months)']
+
+# Reorder the priority counts to match the defined order
+priority_counts = priority_counts[priority_order]
+
+# Create a horizontal bar chart to visualize the priority categories
+plt.figure(figsize=(10, 6))
+priority_counts.plot(kind='barh', color=['red', 'orange', 'yellow', 'green'])
+
+# Add labels and title
+plt.title('Tool Calibration Priority', fontsize=16)
+plt.xlabel('Number of Tools', fontsize=12)
+plt.ylabel('Priority', fontsize=12)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
